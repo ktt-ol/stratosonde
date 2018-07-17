@@ -1,11 +1,7 @@
-#include <dummy.h>
-
 #include <Wire.h>
+
 #include <I2Cdev.h>
-/* #include <MPU6050_9Axis_MotionApps41.h> */
 #include <MPU6050.h>
-/* #include <helper_3dmath.h> */
-/* #include <MPU6050_6Axis_MotionApps20.h> */
 
 #include <Adafruit_Sensor.h>
 #include <Adafruit_VEML6070.h>
@@ -29,92 +25,87 @@ Sodaq_BMP085 bmp;
 
 void setup() {
     Serial.begin(9600);
-    delay(1000);
     Wire.begin();
-
 
     bmp.begin();
     luxsensor.begin();
-    
+
     accelgyro.initialize();
     // TODO initialize
-    accelgyro.setXGyroOffset(220);
-    accelgyro.setYGyroOffset(76);
-    accelgyro.setZGyroOffset(-85);
+    // 32767	5296	-18748	32767	329	-10123
+    
+    /* accelgyro.setXGyroOffset(-32767); */
+    /* accelgyro.setYGyroOffset(-5296); */
+    /* accelgyro.setZGyroOffset(18748); */
+    /* accelgyro.setXAccelOffset(-32767); */
+    /* accelgyro.setYAccelOffset(-329); */
+    /* accelgyro.setZAccelOffset(10123); */
 
     accel.begin();
     uv.begin(VEML6070_1_T); // pass in the integration time constant
 }
 
-void logBMP() {
-    Serial.print("Temperature = ");
-    Serial.print(bmp.readTemperature());
-    Serial.println(" *C");
-
-    Serial.print("Pressure = ");
-    Serial.print(bmp.readPressure());
-    Serial.println(" Pa");
-
-    // Calculate altitude assuming 'standard' barometric
-    // pressure of 1013.25 millibar = 101325 Pascal
-    Serial.print("Altitude = ");
-    Serial.print(bmp.readAltitude());
-    Serial.println(" meters");
-
-  // you can get a more precise measurement of altitude
-  // if you know the current sea level pressure which will
-  // vary with weather and such. If it is 1015 millibars
-  // that is equal to 101500 Pascals.
-    Serial.print("Real altitude = ");
-    Serial.print(bmp.readAltitude(101500));
-    Serial.println(" meters");
-
-    Serial.println();
+char *readBMP() {
+    static char buf[8+1+6];
+    snprintf(buf, sizeof(buf), "%-2.2f\t%d", bmp.readTemperature(), bmp.readPressure());
+    return buf;
 }
 
-
-void logLux() {
-    uint32_t lux = luxsensor.readLux();
-    Serial.println("=== TSL Lux");
-    Serial.println(lux, DEC);
+char *readLux() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%d", luxsensor.readLux());
+    return buf;
 }
 
-void logVEML() {
-    Serial.println("=== VEML");
-    Serial.print("UV light level: "); Serial.println(uv.readUV());
+char *readUV() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "%d", uv.readUV());
+    return buf;
 }
 
-void logMPU6050() {
+char *readMPU6050() {
     int16_t ax, ay, az;
     int16_t gx, gy, gz;
     accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-    Serial.print(ax); Serial.print(" ");
-    Serial.print(ay); Serial.print(" ");
-    Serial.print(az); Serial.print(" ");
-    Serial.print(gx); Serial.print(" ");
-    Serial.print(gy); Serial.print(" ");
-    Serial.print(gz); Serial.println();
+    static char buf[6 * 6 /* signed int16 */ + 5 /*;*/ + 1 /*\0*/];
+    snprintf(buf, sizeof(buf), "%d\t%d\t%d\t%d\t%d\t%d", ax, ay, az, gx, gy, gz);
+    return buf;
 }
 
-
-void logADXL() {
+char *readADXL() {
     sensors_event_t event;
     accel.getEvent(&event);
 
-    /* Display the results (acceleration is measured in m/s^2) */
-    Serial.println("=== ADXL");
-    Serial.print("X: "); Serial.print(event.acceleration.x); Serial.print("  ");
-    Serial.print("Y: "); Serial.print(event.acceleration.y); Serial.print("  ");
-    Serial.print("Z: "); Serial.print(event.acceleration.z); Serial.print("  ");Serial.println("m/s^2 ");
+    static char buf[32];
+    snprintf(buf, sizeof(buf), "%6.2f\t%6.2f\t%6.2f",
+        event.acceleration.x,
+        event.acceleration.y,
+        event.acceleration.z
+    );
+    return buf;
 }
-long timer = 0;
+
+unsigned long timer = 0;
 void loop() {
     if(millis() - timer > 1000) {
-        logMPU6050();
-        logADXL();
-        logVEML();
-        logLux();
-        logBMP();
+        Serial.println("reading");
+        char *buf;
+
+        buf = readMPU6050();
+        Serial.print("6d\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+
+        buf = readADXL();
+        Serial.print("3d\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+
+        buf = readLux();
+        Serial.print("lux\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+
+        buf = readUV();
+        Serial.print("uv\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+
+        buf = readBMP();
+        Serial.print("bmp\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+
         timer = millis();
     }
 }
