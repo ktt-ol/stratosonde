@@ -1,11 +1,17 @@
 #include <Wire.h>
 
+#include <SPI.h>
+#include <SD.h>
+
 #include <I2Cdev.h>
 #include <MPU6050.h>
 
 #include <Adafruit_Sensor.h>
 #include <Adafruit_VEML6070.h>
 #include <Adafruit_ADXL345_U.h>
+
+#include <DHT.h>
+#include <DHT_U.h>
 
 #include <Sodaq_BMP085.h>
 
@@ -21,7 +27,11 @@ Makerblog_TSL45315 luxsensor = Makerblog_TSL45315(TSL45315_TIME_M4);
 
 MPU6050 accelgyro;
 
+DHT_Unified dht(D3, DHT22);
+
 Sodaq_BMP085 bmp;
+
+const int chipSelect = D8;
 
 void setup() {
     Serial.begin(9600);
@@ -29,6 +39,7 @@ void setup() {
 
     bmp.begin();
     luxsensor.begin();
+    dht.begin();
 
     accelgyro.initialize();
     // TODO initialize
@@ -43,6 +54,16 @@ void setup() {
 
     accel.begin();
     uv.begin(VEML6070_1_T); // pass in the integration time constant
+
+    Serial.print("Initializing SD card...");
+
+    // see if the card is present and can be initialized:
+    if (!SD.begin()) {
+        Serial.println("Card failed, or not present");
+        // don't do anything more:
+        return;
+    }
+    Serial.println("card initialized.");
 }
 
 char *readBMP() {
@@ -60,6 +81,16 @@ char *readLux() {
 char *readUV() {
     static char buf[8];
     snprintf(buf, sizeof(buf), "%d", uv.readUV());
+    return buf;
+}
+
+char *readDHT() {
+    static char buf[18];
+    sensors_event_t eventT;
+    sensors_event_t eventH;
+    dht.temperature().getEvent(&eventT);
+    dht.humidity().getEvent(&eventH);
+    snprintf(buf, sizeof(buf), "%5.2f\t%5.2f", eventT.temperature, eventH.relative_humidity);
     return buf;
 }
 
@@ -91,21 +122,50 @@ void loop() {
         Serial.println("reading");
         char *buf;
 
+        File sdFile = SD.open("DATA.LOG", FILE_WRITE);
+        if (!sdFile) {
+            Serial.println("sd\terror");
+        }
+
         buf = readMPU6050();
         Serial.print("6d\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+        if (sdFile) {
+        sdFile.print("6d\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
+        }
 
         buf = readADXL();
         Serial.print("3d\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+        if (sdFile) {
+        sdFile.print("3d\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
+        }
 
         buf = readLux();
         Serial.print("lux\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+        if (sdFile) {
+        sdFile.print("lux\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
+        }
+
+        buf = readDHT();
+        Serial.print("dht\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+        if (sdFile) {
+        sdFile.print("dht\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
+        }
 
         buf = readUV();
         Serial.print("uv\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+        if (sdFile) {
+        sdFile.print("uv\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
+        }
 
         buf = readBMP();
         Serial.print("bmp\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
+        if (sdFile) {
+        sdFile.print("bmp\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
+        }
 
+        if (sdFile) {
+            sdFile.close();
+        }
         timer = millis();
     }
 }
