@@ -17,6 +17,26 @@
 
 #include <Makerblog_TSL45315.h>
 
+///////////////////////////////////////////////////////////////
+#define interval 1000 /* Interval between messurements in ms */
+
+// Calibration
+// Warning: It is essential that you calibrate your sensor by
+//          your own! These values are specific to our setup.
+//
+// Note:    Values from the sensors are slightly depending by
+//          the temperature around the sensor.
+//          We use an average value from 26000 
+//          single messurements raised from 37°C to -50°C.
+
+#define x_gyrooff -543
+#define y_gyrooff 162
+#define z_gyrooff -95
+#define x_accloff -238  
+#define y_accloff 240
+#define z_accloff 18577
+
+///////////////////////////////////////////////////////////////
 
 /* Assign a unique ID to this sensor at the same time */
 Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
@@ -42,15 +62,13 @@ void setup() {
     dht.begin();
 
     accelgyro.initialize();
-    // TODO initialize
-    // 32767	5296	-18748	32767	329	-10123
-    
-    /* accelgyro.setXGyroOffset(-32767); */
-    /* accelgyro.setYGyroOffset(-5296); */
-    /* accelgyro.setZGyroOffset(18748); */
-    /* accelgyro.setXAccelOffset(-32767); */
-    /* accelgyro.setYAccelOffset(-329); */
-    /* accelgyro.setZAccelOffset(10123); */
+
+    accelgyro.setXGyroOffset(x_gyrooff);
+    accelgyro.setYGyroOffset(y_gyrooff);
+    accelgyro.setZGyroOffset(z_gyrooff);
+    accelgyro.setXAccelOffset(x_accloff);
+    accelgyro.setYAccelOffset(y_accloff);
+    accelgyro.setZAccelOffset(z_accloff);
 
     accel.begin();
     uv.begin(VEML6070_1_T); // pass in the integration time constant
@@ -90,6 +108,9 @@ char *readDHT() {
     sensors_event_t eventH;
     dht.temperature().getEvent(&eventT);
     dht.humidity().getEvent(&eventH);
+
+    // to do: return values with . instead of , !
+
     snprintf(buf, sizeof(buf), "%5.2f\t%5.2f", eventT.temperature, eventH.relative_humidity);
     return buf;
 }
@@ -118,7 +139,7 @@ char *readADXL() {
 
 unsigned long timer = 0;
 void loop() {
-    if(millis() - timer > 1000) {
+    if(millis() - timer > interval) {
         Serial.println("reading");
         char *buf;
 
