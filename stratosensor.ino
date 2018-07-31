@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include <SoftwareSerial.h>
 
 #include <SPI.h>
 #include <SD.h>
@@ -26,13 +27,13 @@
 //
 // Note:    Values from the sensors are slightly depending by
 //          the temperature around the sensor.
-//          We use an average value from 26000 
+//          We use an average value from 26000
 //          single messurements raised from 37°C to -50°C.
 
 #define x_gyrooff -543
 #define y_gyrooff 162
 #define z_gyrooff -95
-#define x_accloff -238  
+#define x_accloff -238
 #define y_accloff 240
 #define z_accloff 18577
 
@@ -51,11 +52,19 @@ DHT_Unified dht(D3, DHT22);
 
 Sodaq_BMP085 bmp;
 
+// TODO change pins
+SoftwareSerial GPS(D1, D4, false, 8096); // RX, TX, inverseLogic, buffSize
+
+
 const int chipSelect = D8;
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(57600);
+
     Wire.begin();
+
+    GPS.begin(9600);
+    GPS.enableRx(true);
 
     bmp.begin();
     luxsensor.begin();
@@ -137,15 +146,63 @@ char *readADXL() {
     return buf;
 }
 
-unsigned long timer = 0;
 void loop() {
-    if(millis() - timer > interval) {
-        Serial.println("reading");
+    static unsigned long lastMeasurement = 0;
+
+    // Variables to buffer GPS output. We only write to SD card if the buffer
+    // is full.
+    static const size_t gpsBufSize = 8192;
+    static char gpsBuf[gpsBufSize + 1] = {};
+    static size_t gpsIdx = 0;
+
+    // Variables to read first bytes of GPRMC messages, first entry contains
+    // the current timestamp which we parse and store in time
+    static char gprmcBuf[32];
+    static size_t gprmcIdx = 0;
+    static unsigned long time;
+
+    while (GPS.available() > 0) {
+        int c = GPS.read();
+
+        gpsBuf[gpsIdx++] = c;
+        if ((gpsIdx > 4096 && c == '\r') || gpsIdx == gpsBufSize) {
+            gpsBuf[gpsIdx] = '\0';
+            File sdFile = SD.open("GPS.LOG", FILE_WRITE);
+            if (sdFile) {
+                sdFile.print(gpsBuf);
+            } else {
+                Serial.println("gpssd\terror");
+            }
+            gpsIdx = 0;
+        }
+
+        if (c == '$') {
+            // new message, start again
+            gprmcIdx = 0;
+        }
+        gprmcBuf[gprmcIdx++] = c;
+        if (gprmcIdx > 16) {
+            unsigned long newTime;
+            if (sscanf(gprmcBuf, "$GPGGA,%lu", &newTime) == 1) {
+                time = newTime;
+            }
+            gprmcIdx = 0;
+        }
+        Serial.print((char)c);
+    }
+
+    if(millis() - lastMeasurement > interval) {
         char *buf;
+        return;
 
         File sdFile = SD.open("DATA.LOG", FILE_WRITE);
         if (!sdFile) {
             Serial.println("sd\terror");
+        }
+
+        Serial.print("time\t");Serial.print(millis());Serial.print("\t");Serial.println(time);
+        if (sdFile) {
+        sdFile.print("time\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(time);
         }
 
         buf = readMPU6050();
@@ -187,6 +244,6 @@ void loop() {
         if (sdFile) {
             sdFile.close();
         }
-        timer = millis();
+        lastMeasurement = millis();
     }
 }
