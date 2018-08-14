@@ -154,6 +154,7 @@ void loop() {
             File sdFile = SD.open("GPS.LOG", FILE_WRITE);
             if (sdFile) {
                 sdFile.print(gpsBuf);
+                sdFile.close();
             } else {
                 Serial.println("gpssd\terror");
             }
