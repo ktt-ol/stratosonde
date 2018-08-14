@@ -11,9 +11,6 @@
 #include <Adafruit_VEML6070.h>
 #include <Adafruit_ADXL345_U.h>
 
-#include <DHT.h>
-#include <DHT_U.h>
-
 #include <Sodaq_BMP085.h>
 
 #include <Makerblog_TSL45315.h>
@@ -48,13 +45,11 @@ Makerblog_TSL45315 luxsensor = Makerblog_TSL45315(TSL45315_TIME_M4);
 
 MPU6050 accelgyro;
 
-DHT_Unified dht(D3, DHT22);
-
 Sodaq_BMP085 bmp;
 
-// TODO change pins
-SoftwareSerial GPS(D1, D4, false, 8096); // RX, TX, inverseLogic, buffSize
+SoftwareSerial GPS(D3, D4, false, 8096); // RX, TX, inverseLogic, buffSize
 
+// D1/D2 i2c
 
 const int chipSelect = D8;
 
@@ -64,11 +59,11 @@ void setup() {
     Wire.begin();
 
     GPS.begin(9600);
+    // Do not enable Tx!
     GPS.enableRx(true);
 
     bmp.begin();
     luxsensor.begin();
-    dht.begin();
 
     accelgyro.initialize();
 
@@ -111,18 +106,6 @@ char *readUV() {
     return buf;
 }
 
-char *readDHT() {
-    static char buf[18];
-    sensors_event_t eventT;
-    sensors_event_t eventH;
-    dht.temperature().getEvent(&eventT);
-    dht.humidity().getEvent(&eventH);
-
-    // to do: return values with . instead of , !
-
-    snprintf(buf, sizeof(buf), "%5.2f\t%5.2f", eventT.temperature, eventH.relative_humidity);
-    return buf;
-}
 
 char *readMPU6050() {
     int16_t ax, ay, az;
@@ -151,21 +134,22 @@ void loop() {
 
     // Variables to buffer GPS output. We only write to SD card if the buffer
     // is full.
-    static const size_t gpsBufSize = 8192;
+    static const size_t gpsBufSize = 4096;
     static char gpsBuf[gpsBufSize + 1] = {};
     static size_t gpsIdx = 0;
 
-    // Variables to read first bytes of GPRMC messages, first entry contains
-    // the current timestamp which we parse and store in time
-    static char gprmcBuf[32];
-    static size_t gprmcIdx = 0;
+    // Variables to read each line, if a line is complete and starts with $GPRMC then we copy the content
+    // to our gprmcBuf and parse the current timestamp which we store in time
+    static char lineBuf[128];
+    static size_t lineIdx;
+    static char gprmcBuf[128];
     static unsigned long time;
 
     while (GPS.available() > 0) {
         int c = GPS.read();
 
         gpsBuf[gpsIdx++] = c;
-        if ((gpsIdx > 4096 && c == '\r') || gpsIdx == gpsBufSize) {
+        if ((gpsIdx > 2048 && c == '\r') || gpsIdx == gpsBufSize) {
             gpsBuf[gpsIdx] = '\0';
             File sdFile = SD.open("GPS.LOG", FILE_WRITE);
             if (sdFile) {
@@ -178,22 +162,26 @@ void loop() {
 
         if (c == '$') {
             // new message, start again
-            gprmcIdx = 0;
-        }
-        gprmcBuf[gprmcIdx++] = c;
-        if (gprmcIdx > 16) {
-            unsigned long newTime;
-            if (sscanf(gprmcBuf, "$GPGGA,%lu", &newTime) == 1) {
-                time = newTime;
+            lineBuf[lineIdx] = '\0';
+            if (strcmp(lineBuf, "$GPRMC,") == 0) {
+                strcpy(gprmcBuf, lineBuf);
+                unsigned long newTime;
+                if (sscanf(gprmcBuf, "$GPRMC,%lu", &newTime) == 1) {
+                    time = newTime;
+                }
             }
-            gprmcIdx = 0;
+            lineIdx = 0;
         }
-        Serial.print((char)c);
+        lineBuf[lineIdx++] = c;
+        if (lineIdx >= 128) {
+            // unexpected long line, restart to prevent buffer overflow
+            lineIdx = 0;
+        }
+        /* Serial.print((char)c); */
     }
 
     if(millis() - lastMeasurement > interval) {
         char *buf;
-        return;
 
         File sdFile = SD.open("DATA.LOG", FILE_WRITE);
         if (!sdFile) {
@@ -203,6 +191,11 @@ void loop() {
         Serial.print("time\t");Serial.print(millis());Serial.print("\t");Serial.println(time);
         if (sdFile) {
         sdFile.print("time\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(time);
+        }
+
+        Serial.print("gps\t");Serial.print(millis());Serial.print("\t");Serial.println(gprmcBuf);
+        if (sdFile) {
+        sdFile.print("gps\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(gprmcBuf);
         }
 
         buf = readMPU6050();
@@ -221,12 +214,6 @@ void loop() {
         Serial.print("lux\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
         if (sdFile) {
         sdFile.print("lux\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
-        }
-
-        buf = readDHT();
-        Serial.print("dht\t");Serial.print(millis());Serial.print("\t");Serial.println(buf);
-        if (sdFile) {
-        sdFile.print("dht\t");sdFile.print(millis());sdFile.print("\t");sdFile.println(buf);
         }
 
         buf = readUV();
