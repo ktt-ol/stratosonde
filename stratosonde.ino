@@ -134,7 +134,7 @@ void loop() {
 
     // Variables to buffer GPS output. We only write to SD card if the buffer
     // is full.
-    static const size_t gpsBufSize = 4096;
+    static const size_t gpsBufSize = 1024;
     static char gpsBuf[gpsBufSize + 1] = {};
     static size_t gpsIdx = 0;
 
@@ -149,12 +149,12 @@ void loop() {
         int c = GPS.read();
 
         gpsBuf[gpsIdx++] = c;
-        if ((gpsIdx > 2048 && c == '\r') || gpsIdx == gpsBufSize) {
+        if ((gpsIdx > 256 && c == '\r') || gpsIdx == gpsBufSize) {
             gpsBuf[gpsIdx] = '\0';
-            File sdFile = SD.open("GPS.LOG", FILE_WRITE);
-            if (sdFile) {
-                sdFile.print(gpsBuf);
-                sdFile.close();
+            File sdFileGPS = SD.open("GPS.LOG", FILE_WRITE);
+            if (sdFileGPS) {
+                sdFileGPS.print(gpsBuf);
+                sdFileGPS.close();
             } else {
                 Serial.println("gpssd\terror");
             }
