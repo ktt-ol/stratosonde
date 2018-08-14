@@ -142,7 +142,7 @@ void loop() {
     // to our gprmcBuf and parse the current timestamp which we store in time
     static char lineBuf[128];
     static size_t lineIdx;
-    static char gprmcBuf[128];
+    static char gprmcBuf[128] = {};
     static unsigned long time;
 
     while (GPS.available() > 0) {
@@ -163,12 +163,17 @@ void loop() {
         if (c == '$') {
             // new message, start again
             lineBuf[lineIdx] = '\0';
-            if (strcmp(lineBuf, "$GPRMC,") == 0) {
+            if (strncmp(lineBuf, "$GPRMC,", 7) == 0) {
                 strcpy(gprmcBuf, lineBuf);
+                gprmcBuf[strlen(gprmcBuf)-2] = '\0'; // strip \r\n
                 unsigned long newTime;
                 if (sscanf(gprmcBuf, "$GPRMC,%lu", &newTime) == 1) {
                     time = newTime;
                 }
+            } else if (gprmcBuf[0] == '\0') { // switch between \0 and - while gprmcBuf is not set but we still receive data
+                gprmcBuf[0] = '-';
+            } else if (gprmcBuf[0] == '-') {
+                gprmcBuf[0] = '\0';
             }
             lineIdx = 0;
         }
